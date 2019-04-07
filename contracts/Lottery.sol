@@ -1,6 +1,7 @@
 pragma solidity ^0.5.0;
 import "./Oraclize.sol";
 import "./JsmnSolLib.sol";
+import "./BytesLib.sol";
 
 contract Precompile {
   function bigModExp (uint, uint, uint, bytes memory, bytes memory, bytes memory) public returns (bytes memory);
@@ -70,7 +71,7 @@ contract Lottery is usingOraclize {
     }
   }
 
-  function verify() public payable {
+  function verify() public payable returns (bool) {
     if (oraclize_getPrice("URL") > address(this).balance) {
       emit LogNewOraclizeQuery("Oraclize query was NOT sent, please add some ETH to cover for the query fee");
     } else {
@@ -114,7 +115,12 @@ contract Lottery is usingOraclize {
 
       bytes memory verf = modExp.bigModExp(random.length, exponentBytes.length, modulusBytes.length, 
                                           random, exponentBytes, modulusBytes);
-      // TODO: compare verf with proofBytes
+
+      bytes memory rnd = random;
+      if (BytesLib.equal(rnd, verf))
+        return true;
+      else
+        return false;
       /**********************************************************************************************/
 
     }
