@@ -116,8 +116,7 @@ contract Lottery is usingOraclize {
       bytes memory verf = modExp.bigModExp(random.length, exponentBytes.length, modulusBytes.length, 
                                           random, exponentBytes, modulusBytes);
 
-      bytes memory rnd = random;
-      if (BytesLib.equal(rnd, verf))
+      if (BytesLib.equal(proofBytes, verf))
         return true;
       else
         return false;
