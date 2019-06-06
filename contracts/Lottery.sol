@@ -58,22 +58,21 @@ contract Lottery is usingOraclize {
   }
 
   // Getter method for the number of participants
-  function get_number_participants() public returns (uint) {
+  function get_number_participants() public view returns (uint) {
     return  number_participants;
   }
 
   // Method to allow owner to change his address
   function set_owner_address(address payable _ownerAddress) public payable onlyCreator {
-    ownerAddress = _ownerAddress;
+    creator = _ownerAddress;
   }
 
   // Method to allow owner to change the percentage of the bets that goes to the winner
-  function set_winningAmountPercentage(_winPercent) public payable onlyCreator {
+  function set_winningAmountPercentage(uint _winPercent) public payable onlyCreator {
     win_percentage = _winPercent;
   }
 
-  // Method called by the owner to pick and pay the winner
-  function draw() public payable onlyCreator nonZeroBalance {
+  function fetch_random_value() public payable onlyCreator {
     if (oraclize_getPrice("URL") > address(this).balance)
     {
       emit LogNewOraclizeQuery("Oraclize query was NOT sent, please add some ETH to cover for the query fee");
@@ -84,22 +83,24 @@ contract Lottery is usingOraclize {
 
       // Querying the beacon for the random value;
       oraclize_query("URL", "");
-
-      // Determining the winner and paying the winner a percentage of the current bets (rest are the contract owner's earnings)
-      address payable winner = participants[random % number_participants];
-      uint amount = bets * win_percentage / 100;
-      uint ownerAmount = bets * (100 - win_percentage) / 100;
-
-      winner.transfer(amount);
-      ownerAddress.transfer(ownerAmount);
-      emit drew(winner, amount);
-      number_participants = 0;
-      bets = 0;
-      delete participants;
     }
   }
 
- function obtain_proof() public payable {
+  // Method called by the owner to pick and pay the winner
+  function draw() public payable onlyCreator nonZeroBalance { 
+    // Determining the winner and paying the winner a percentage of the current bets (rest are the contract owner's earnings)
+    address payable winner = participants[random % number_participants];
+    uint amount = bets * win_percentage / 100;
+    uint ownerAmount = bets * (100 - win_percentage) / 100;
+    winner.transfer(amount);
+    creator.transfer(ownerAmount);
+    emit drew(winner, amount);
+    number_participants = 0;
+    bets = 0;
+    delete participants;
+  }
+
+ function fetch_proof() public payable {
     if (oraclize_getPrice("URL") > address(this).balance)
     {
       emit LogNewOraclizeQuery("Oraclize query was NOT sent, please add some ETH to cover for the query fee");
