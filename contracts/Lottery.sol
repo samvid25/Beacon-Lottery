@@ -1,23 +1,27 @@
 pragma solidity ^0.5.0;
 import "./Oraclize.sol";
-import "./JsmnSolLib.sol";
-import "./BytesLib.sol";
-
-contract Precompile {
-  function bigModExp (uint, uint, uint, bytes memory, bytes memory, bytes memory) public returns (bytes memory);
-}
+import "./strings.sol";
 
 contract Lottery is usingOraclize {
 
+  using strings for *;
+
   uint number_participants;
   address payable[] participants;
-  address creator;
-  bytes random;
-  string result;
+  address payable creator;
+  uint random;
+  uint bets;
+  uint win_percentage;
+
+  bytes32 qID;
+  uint256 witness;
+  uint256 seed;
+  uint256 iter_exp;
+  uint256 prime;
 
   // Set minimum betting amount = 1 ether
   modifier minAmount() {
-    require(msg.value > 1 ether);
+    require(msg.value >= 1 ether);
     _;
   }
 
@@ -42,91 +46,115 @@ contract Lottery is usingOraclize {
 
   constructor() public {
     creator = msg.sender;
-    OAR = OraclizeAddrResolverI(0x6f485C8BF6fc43eA212E93BBF8ce046C7f1cb475);
+    // Uncomment the following line and replace the value with the address obtained from Ethereum-Bridge
+    // OAR = OraclizeAddrResolverI(0x6f485C8BF6fc43eA212E93BBF8ce046C7f1cb475);
   }
 
+  // Method called by participants to participate in the lottery
   function bet() public payable minAmount {
     participants.push(msg.sender);
     number_participants++;
+    bets = bets + msg.value;
   }
 
+  // Getter method for the number of participants
+  function get_number_participants() public returns (uint) {
+    return  number_participants;
+  }
+
+  // Method to allow owner to change his address
+  function set_owner_address(address payable _ownerAddress) public payable onlyCreator {
+    ownerAddress = _ownerAddress;
+  }
+
+  // Method to allow owner to change the percentage of the bets that goes to the winner
+  function set_winningAmountPercentage(_winPercent) public payable onlyCreator {
+    win_percentage = _winPercent;
+  }
+
+  // Method called by the owner to pick and pay the winner
   function draw() public payable onlyCreator nonZeroBalance {
-    if (oraclize_getPrice("URL") > address(this).balance) {
+    if (oraclize_getPrice("URL") > address(this).balance)
+    {
       emit LogNewOraclizeQuery("Oraclize query was NOT sent, please add some ETH to cover for the query fee");
-    } else {
+    } 
+    else
+    {
       emit LogNewOraclizeQuery("Oraclize query was sent, standing by for the answer..");
 
-      // I have to provide the URL to Mathias' web-app implementation of the beacon. (The URL is an API that returns the random value)
+      // Querying the beacon for the random value;
       oraclize_query("URL", "");
 
-      random = bytes(result);
-      uint randm = parseInt(result);
-      address payable winner = participants[randm % number_participants];
-      uint amount = address(this).balance;
+      // Determining the winner and paying the winner a percentage of the current bets (rest are the contract owner's earnings)
+      address payable winner = participants[random % number_participants];
+      uint amount = bets * win_percentage / 100;
+      uint ownerAmount = bets * (100 - win_percentage) / 100;
 
-      winner.transfer(address(this).balance);
+      winner.transfer(amount);
+      ownerAddress.transfer(ownerAmount);
       emit drew(winner, amount);
       number_participants = 0;
+      bets = 0;
       delete participants;
     }
   }
 
-  function verify() public payable returns (bool) {
-    if (oraclize_getPrice("URL") > address(this).balance) {
+ function obtain_proof() public payable {
+    if (oraclize_getPrice("URL") > address(this).balance)
+    {
       emit LogNewOraclizeQuery("Oraclize query was NOT sent, please add some ETH to cover for the query fee");
-    } else {
-      emit LogNewOraclizeQuery("Oraclize query was sent, standing by for the answer..");
-
+    }
+    else
+    {
       // Endpoint to obtain proof
-      oraclize_query("URL", "");
+      qID = oraclize_query("URL", "");
 
-      /*
-          result = 
-          {
-            "proof" : " ",
-            "exponent" : " ", =  2 * #iterations
-            "mod" : " "
-          }
-      */
-
-      /*****************************Parsing the proof sent by the beacon*****************************/
-      uint returnValue;
-      JsmnSolLib.Token[] memory tokens;
-      uint actualNum;
-      (returnValue, tokens, actualNum) = JsmnSolLib.parse(result, 6);
-      
-      JsmnSolLib.Token memory t;
-
-      t = tokens[2];
-      string memory proof = JsmnSolLib.getBytes(result, t.start, t.end);
-      bytes memory proofBytes = bytes(proof);
-
-      t = tokens[4];
-      string memory exponent = JsmnSolLib.getBytes(result, t.start, t.end);
-      bytes memory exponentBytes = bytes(exponent);
-
-      t = tokens[6];
-      string memory modulus = JsmnSolLib.getBytes(result, t.start, t.end);
-      bytes memory modulusBytes = bytes(modulus);
-      /**********************************************************************************************/
-
-      /************************Modular squaring verification using precompile************************/
-      Precompile modExp = Precompile(0x0000000000000000000000000000000000000005);
-
-      bytes memory verf = modExp.bigModExp(random.length, exponentBytes.length, modulusBytes.length, 
-                                          random, exponentBytes, modulusBytes);
-
-      if (BytesLib.equal(proofBytes, verf))
-        return true;
-      else
-        return false;
-      /**********************************************************************************************/
-
+      emit LogNewOraclizeQuery("Oraclize query was sent, standing by for the answer..");
     }
   }
 
+  function verify() public payable returns (bool) {
+    uint256 result;
+    uint w = witness;
+    uint ie = iter_exp;
+    uint pr = prime;
+    assembly {
+      let p := mload(0x40)
+      mstore(p, 0x20)
+      mstore(add(p, 0x20), 0x20)
+      mstore(add(p, 0x40), 0x20)
+      mstore(add(p, 0x60), w)
+      mstore(add(p, 0x80), ie)
+      mstore(add(p, 0xa0), pr)
+
+      let success := call(sub(gas, 2000), 0x05, 0, p, 0xc0, p, 0x20)
+      switch success case 0 {
+        revert(0, 0)
+      }
+
+      result := mload(p)
+    }
+
+    if(result == seed)
+      return true;
+
+    return false;
+  }
+
   function __callback(bytes32 myid, string memory res) public {
-      require(msg.sender == oraclize_cbAddress());
-      result = res;
+    require(msg.sender == oraclize_cbAddress());
+    if(myid == qID)
+    {
+      strings.slice memory s = res.toSlice();
+      strings.slice memory delim = "-".toSlice();
+      witness = parseInt(s.split(delim).toString());
+      seed = parseInt(s.split(delim).toString());
+      iter_exp = parseInt(s.split(delim).toString());
+      prime = parseInt(s.split(delim).toString());
+    }
+    else
+    {
+      random = parseInt(res);
+    }
   }
 }
