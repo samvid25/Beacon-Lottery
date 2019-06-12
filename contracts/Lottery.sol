@@ -46,7 +46,7 @@ contract Lottery is usingOraclize {
 
   constructor() public {
     creator = msg.sender;
-    // Uncomment the following line and replace the value with the address obtained from Ethereum-Bridge
+    // Uncomment the following line and replace the value with the address obtained from Ethereum-Bridge (when testing on a private network)
     // OAR = OraclizeAddrResolverI(0x6f485C8BF6fc43eA212E93BBF8ce046C7f1cb475);
   }
 
@@ -62,7 +62,7 @@ contract Lottery is usingOraclize {
     return  number_participants;
   }
 
-  // Method to allow owner to change his address
+  // Method to allow owner to change their address
   function set_owner_address(address payable _ownerAddress) public payable onlyCreator {
     creator = _ownerAddress;
   }
@@ -72,35 +72,39 @@ contract Lottery is usingOraclize {
     win_percentage = _winPercent;
   }
 
+  // Method to fetch the random value from the beacon
   function fetch_random_value() public payable onlyCreator {
     if (oraclize_getPrice("URL") > address(this).balance)
     {
       emit LogNewOraclizeQuery("Oraclize query was NOT sent, please add some ETH to cover for the query fee");
-    } 
+    }
     else
     {
       emit LogNewOraclizeQuery("Oraclize query was sent, standing by for the answer..");
 
-      // Querying the beacon for the random value;
+      // Querying the beacon for the random value
       oraclize_query("URL", "");
     }
   }
 
   // Method called by the owner to pick and pay the winner
-  function draw() public payable onlyCreator nonZeroBalance { 
+  function draw() public payable onlyCreator nonZeroBalance {
     // Determining the winner and paying the winner a percentage of the current bets (rest are the contract owner's earnings)
     address payable winner = participants[random % number_participants];
     uint amount = bets * win_percentage / 100;
-    uint ownerAmount = bets * (100 - win_percentage) / 100;
+    uint ownerAmount = bets - amount;
     winner.transfer(amount);
     creator.transfer(ownerAmount);
     emit drew(winner, amount);
+
+    // Resetting variables after draw is completed
     number_participants = 0;
     bets = 0;
     delete participants;
   }
 
- function fetch_proof() public payable {
+  // Method to fetch the proof from the beacon
+  function fetch_proof() public payable {
     if (oraclize_getPrice("URL") > address(this).balance)
     {
       emit LogNewOraclizeQuery("Oraclize query was NOT sent, please add some ETH to cover for the query fee");
@@ -114,12 +118,17 @@ contract Lottery is usingOraclize {
     }
   }
 
+  // Method to verify the proof fetched from the beacon
   function verify() public payable returns (bool) {
     uint256 result;
     uint w = witness;
     uint ie = iter_exp;
     uint pr = prime;
+
+    // Invoking the bigModExp precompile
     assembly {
+
+      // The precompile needs the parameters as a contiguous byte array
       let p := mload(0x40)
       mstore(p, 0x20)
       mstore(add(p, 0x20), 0x20)
@@ -128,6 +137,7 @@ contract Lottery is usingOraclize {
       mstore(add(p, 0x80), ie)
       mstore(add(p, 0xa0), pr)
 
+      // The bigModExp precompile resides at address 0x05. Invoking it with the given parameters.
       let success := call(sub(gas, 2000), 0x05, 0, p, 0xc0, p, 0x20)
       switch success case 0 {
         revert(0, 0)
@@ -136,12 +146,14 @@ contract Lottery is usingOraclize {
       result := mload(p)
     }
 
+    // The witness after repeated modular squaring should be equal to the 'seed' value sent by the beacon for valid verification of proof
     if(result == seed)
       return true;
 
     return false;
   }
 
+  // Oraclize callback method
   function __callback(bytes32 myid, string memory res) public {
     require(msg.sender == oraclize_cbAddress());
     if(myid == qID)
