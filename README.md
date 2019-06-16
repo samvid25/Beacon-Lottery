@@ -11,7 +11,7 @@ The contract owner calls `fetch_random_value()` followed by `draw()` to determin
 
 The contract obtains a random value from the beacon using an [oracle](www.oraclize.it). This value is used to randomly pick a winner from the participating users.
 
-The lottery model implemented here lies between an OFF and an ITV model. It is mostly off-chain, while at the same time, performs verification of beacon output on-chain and does not require the users to send the commitment value obtained from the beacon to the smart contract.
+The lottery model implemented here lies between an OFF and an ITV model (more details on the models [here](https://www.univie.ac.at/ct/stefan/blockchain19.pdf)). It is mostly off-chain, while at the same time, performs verification of beacon output on-chain and does not require the users to send the commitment value obtained from the beacon to the smart contract.
 
 ## Beacon
 
