@@ -56,6 +56,12 @@ contract Lottery is usingOraclize {
     _;
   }
 
+  // Ensure that bets have not been placed yet
+  modifier noBets(){
+    require(bets == 0);
+    _;
+  }
+
   event drew(
     address indexed winner,
     uint amount
@@ -87,7 +93,7 @@ contract Lottery is usingOraclize {
   }
 
   // Method to allow owner to change the percentage of the bets that goes to the winner
-  function set_winningAmountPercentage(uint _winPercent) public payable onlyCreator {
+  function set_winningAmountPercentage(uint _winPercent) public payable onlyCreator noBets {
     win_percentage = _winPercent;
   }
 
